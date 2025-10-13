@@ -1,0 +1,9 @@
+description: A You Only Look Once (YOLO) model that detects objects in an image. It is trained on proprietary welding dataset provided by Gamuda.
+
+names:
+  0: bad_weld
+  1: good_weld
+  
+class_colors:
+  0: (255, 0, 0)
+  1: (0, 255, 0)

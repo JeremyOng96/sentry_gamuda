@@ -1,0 +1,7 @@
+ultralytics
+gradio
+numpy <= 1.26
+matplotlib
+fpdf2
+Pillow
+psycopg2

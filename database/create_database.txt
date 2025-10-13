@@ -1,0 +1,38 @@
+CREATE TABLE users (
+    user_id BIGSERIAL PRIMARY KEY,
+    name VARCHAR(100) NOT NULL
+);
+
+CREATE TABLE projects (
+    project_id BIGSERIAL PRIMARY KEY,
+    project_manager_id BIGINT NOT NULL REFERENCES users(user_id) ON DELETE CASCADE,
+    start_date DATE NOT NULL,
+    end_date DATE,
+    location VARCHAR(100) NOT NULL,
+    description VARCHAR(100)
+);
+
+CREATE TABLE weld_quality (
+    weld_quality_id BIGSERIAL PRIMARY KEY,
+    project_id BIGINT NOT NULL REFERENCES projects(project_id) ON DELETE CASCADE,
+    user_id BIGINT NOT NULL REFERENCES users(user_id) ON DELETE CASCADE,
+    description VARCHAR(100),
+    good_weld INTEGER NOT NULL,
+    bad_weld INTEGER NOT NULL,
+    uncertain INTEGER NOT NULL,
+    created_at TIMESTAMPTZ DEFAULT now()
+);
+
+INSERT INTO users (name) VALUES
+('Wong Huan Yang'),
+('Jeremy Ong'), 
+('Yap Jinn Ming'), 
+('Pan ZhiHao');
+
+INSERT INTO projects (project_manager_id, start_date, end_date, location, description) VALUES
+(1, '2025-10-03', '2025-10-31', 'Antler Malaysia', 'Detecting quality of welds in Antler Malaysia'),
+(2, '2025-10-13', '2025-11-30', 'SkyMeridian Condominium', 'Testing weld quality at Sky Meridian')
+;
+
+
+

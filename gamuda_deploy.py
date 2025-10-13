@@ -502,7 +502,7 @@ def display_current_annotations(low_conf_filenames, files, predictions_state):
         logger.error(f"Error in display_current_annotations: {e}", exc_info=True)
         return {}
 
-def export_predictions(files, low_conf_state, location, form_date, description, created_by, status, predictions_state):
+def export_predictions(form_date, description, created_by, status, predictions_state):
     """Export ALL predictions in COCO format"""
     
     if not files:
@@ -534,11 +534,11 @@ def export_predictions(files, low_conf_state, location, form_date, description, 
             "description": description or "Gamuda Weld Detection Dataset",
             "contributor": created_by or "Gamuda IBS",
             "date_created": formatted_date,
-            "url": "https://www.gamuda.com.my/"
+            "url": "https://parexus.ai/"
         },
         "licenses": [
             {
-                "url": "https://www.gamuda.com.my/",
+                "url": "https://parexus.ai/",
                 "id": 1,
                 "name": "Proprietary"
             }
@@ -649,12 +649,13 @@ def generate_pdf_report(files, location, form_date, description, created_by, sta
         return None
 
     metadata = {
-        "project_id": project_id,  # Add project ID to metadata
-        "location": location or "Not specified",
+        "project_id": project_id,
+        "project_manager_id": created_by.split("-")[0],
+        "created_by": created_by.split("-")[1],
+        "location": location,
         "date": formatted_date,
         "due_date": formatted_due_date,
         "description": description or "Not specified", 
-        "created_by": created_by or "Not specified",
         "status": status or "Not specified",
         "export_time": datetime.now().strftime("%Y-%m-%d-%H-%M-%S"),
         "statistics": {
@@ -665,7 +666,8 @@ def generate_pdf_report(files, location, form_date, description, created_by, sta
             "edited_welds": edited_welds
         },
         "qa_description": qa_description if qa_description else "Not specified",
-        "qa_created_by": qa_created_by if qa_created_by else "Not specified",
+        "qa_user_id": qa_created_by.split("-")[0],
+        "qa_created_by": qa_created_by.split("-")[1],
         "labels": label_list,
         "colors": label_colors,
     }
@@ -680,12 +682,13 @@ def generate_pdf_report(files, location, form_date, description, created_by, sta
     if report_path:
         logger.info(f"PDF report generated successfully: {report_path}")
 
-        # Get project ID from metadata (we already validated it exists)
+        # Get project ID and user ID from metadata (we already validated it exists)
         try:
             project_id = metadata.get('project_id')
-            logger.info(f"Using project ID: {project_id}")
+            qa_user_id = metadata.get('qa_user_id')
+            logger.info(f"Using project ID: {project_id}, QA User ID: {qa_user_id}")
             
-            if project_id:
+            if project_id and qa_user_id:
                 # Get statistics from metadata
                 stats = metadata.get('statistics', {})
                 good_welds = stats.get('good_welds', 0)
@@ -696,7 +699,7 @@ def generate_pdf_report(files, location, form_date, description, created_by, sta
                 from database.db_utils import push_results_to_database
                 success = push_results_to_database(
                     project_id=project_id,
-                    created_by=qa_created_by if qa_created_by else created_by,
+                    user_id=qa_user_id,  # Use the numeric user ID
                     description=qa_description if qa_description else description,
                     good_weld=good_welds,
                     bad_weld=bad_welds,
@@ -718,7 +721,7 @@ with gr.Blocks(css=css, title="Sentry") as demo:
     # Initialize session state
     predictions_state = gr.State(get_initial_predictions())
     
-    gr.Image("gamuda-logo-header-red.png", label="", show_label=False, container=False, height=100, width=300, show_download_button=False, show_fullscreen_button=False)
+    gr.Image("./assets/gamuda-logo-header-red.png", label="", show_label=False, container=False, height=100, width=300, show_download_button=False, show_fullscreen_button=False)
     gr.Markdown("<h1 style='text-align: left;'>Gamuda Weld Quality Detection</h1>")
     
     with gr.Row():
@@ -821,8 +824,6 @@ with gr.Blocks(css=css, title="Sentry") as demo:
                 show_label=True,
             )
 
-            # json_boxes = gr.JSON(visible=False)
-            # Add a live JSON display component
             live_json = gr.JSON(label="Current Annotations (Live)", value={})
             with gr.Column():
                 update_button = gr.Button("Update annotations", variant="primary")
@@ -891,9 +892,6 @@ with gr.Blocks(css=css, title="Sentry") as demo:
     download_button.click(
         fn=export_predictions,
         inputs=[
-            input_images,  # Use original files, not just low confidence state
-            low_conf_state,
-            project_location,
             project_start_date,
             project_description,
             project_created_by,

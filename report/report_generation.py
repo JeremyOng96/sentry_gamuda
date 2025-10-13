@@ -154,8 +154,9 @@ class WeldReportGenerator:
 
         # Get historical results
         project_id = metadata.get('project_id')
-        created_by = metadata.get('qa_created_by') or metadata.get('created_by')
-        historical_results = get_specific_results(project_id, created_by)
+        qa_user_id = metadata.get('qa_user_id')  # This should be the numeric ID
+        logger.info(f"Getting historical results for project_id={project_id}, qa_user_id={qa_user_id}")
+        historical_results = get_specific_results(project_id, qa_user_id) if qa_user_id else []
         logger.info(f"Historical results: {historical_results}")
         # Combine current and historical results
         all_results = []

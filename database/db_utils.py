@@ -4,6 +4,7 @@ import logging
 logger = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO)
 
+# change the database info
 def connect_to_database():
     """Connect to the database"""
     return psycopg2.connect(
@@ -18,7 +19,7 @@ def get_projects_from_database():
     try:
         conn = connect_to_database()
         cursor = conn.cursor()
-        cursor.execute("SELECT id, location FROM project")
+        cursor.execute("SELECT project_id, location FROM projects")
         rows = cursor.fetchall()
         
         # Format as list of strings for dropdown
@@ -47,9 +48,10 @@ def get_project_details(selected_project):
         conn = connect_to_database()
         cursor = conn.cursor()
         cursor.execute("""
-            SELECT location, start_date, end_date, description, created_by 
-            FROM project 
-            WHERE id = %s
+            SELECT projects.location, projects.start_date, projects.end_date, projects.description, users.name, users.user_id
+            FROM projects
+            LEFT JOIN users ON projects.project_manager_id = users.user_id
+            WHERE project_id = %s
         """, (project_id,))
         
         row = cursor.fetchone()
@@ -57,13 +59,13 @@ def get_project_details(selected_project):
         conn.close()
         
         if row:
-            location, start_date, end_date, description, created_by = row
+            location, start_date, end_date, description, created_by, user_id = row
             
             # Convert dates to full datetime string format for Gradio DateTime
             start_date_str = start_date.strftime("%Y-%m-%d 00:00:00") if start_date else ""
             end_date_str = end_date.strftime("%Y-%m-%d 00:00:00") if end_date else ""
             
-            return (location, start_date_str, end_date_str, description, created_by, "In Progress")
+            return (location, start_date_str, end_date_str, description, f"{user_id} - {created_by}", "In Progress")
             
         else:
             return "", "", "", "", "", ""
@@ -72,12 +74,12 @@ def get_project_details(selected_project):
         logger.error(f"Error fetching project details: {e}")
         return "", "", "", "", "", ""
 
-def push_results_to_database(project_id, created_by, description, good_weld, bad_weld, uncertain):
+def push_results_to_database(project_id, user_id, description, good_weld, bad_weld, uncertain):
     """Push the weld quality results to the database
     
     Args:
         project_id (int): ID of the project
-        created_by (str): Name of person who created the report
+        user_id (int): User ID of the user who created the report
         description (str): Description of the inspection
         good_weld (int): Number of good welds
         bad_weld (int): Number of bad welds
@@ -85,13 +87,14 @@ def push_results_to_database(project_id, created_by, description, good_weld, bad
     """
     try:
         # Validate required fields
-        if not project_id or not created_by:
-            logger.error("project_id and created_by are required")
+        if not project_id or not user_id:
+            logger.error("project_id and user_id are required")
             return False
             
         # Ensure numeric fields are integers
         try:
             project_id = int(project_id)
+            user_id = int(user_id)
             good_weld = int(good_weld)
             bad_weld = int(bad_weld)
             uncertain = int(uncertain)
@@ -99,18 +102,16 @@ def push_results_to_database(project_id, created_by, description, good_weld, bad
             logger.error(f"Invalid numeric value: {e}")
             return False
             
-        # Truncate strings to match database limits
-        created_by = str(created_by)[:255]
-        description = str(description)[:255] if description else None
+        description = str(description)
         
         conn = connect_to_database()
         cursor = conn.cursor()
         
         cursor.execute("""
             INSERT INTO weld_quality 
-                (project_id, created_by, description, good_weld, bad_weld, uncertain)
+                (project_id, user_id, description, good_weld, bad_weld, uncertain)
             VALUES (%s, %s, %s, %s, %s, %s)
-        """, (project_id, created_by, description, good_weld, bad_weld, uncertain))
+        """, (project_id, user_id, description, good_weld, bad_weld, uncertain))
         
         conn.commit()
         logger.info(f"Successfully pushed results to database for project {project_id}")
@@ -128,7 +129,7 @@ def push_results_to_database(project_id, created_by, description, good_weld, bad
                 pass
         return False
 
-def get_specific_results(project_id, created_by):
+def get_specific_results(project_id, user_id):
     """
     Returns the specific results for a given project_id and created_by
     
@@ -136,7 +137,7 @@ def get_specific_results(project_id, created_by):
         List of dictionaries containing:
             - id: The record ID
             - project_id: The project ID
-            - created_by: Who created the record
+            - user_id: User ID of the user who created the record
             - description: The QA description
             - good_weld: Number of good welds
             - bad_weld: Number of bad welds
@@ -146,12 +147,12 @@ def get_specific_results(project_id, created_by):
         conn = connect_to_database()
         cursor = conn.cursor()
         cursor.execute("""
-            SELECT id, project_id, created_by, description, good_weld, bad_weld, uncertain,
+            SELECT weld_quality_id, project_id, user_id, description, good_weld, bad_weld, uncertain,
                    to_char(created_at, 'YYYY-MM-DD HH24:MI:SS') as created_at
             FROM weld_quality 
-            WHERE project_id = %s AND created_by = %s 
-            ORDER BY created_at DESC, id DESC
-        """, (project_id, created_by))
+            WHERE project_id = %s AND user_id = %s 
+            ORDER BY created_at DESC, weld_quality_id DESC
+        """, (project_id, user_id))
         
         # Convert rows to list of dictionaries
         results = []
@@ -159,7 +160,7 @@ def get_specific_results(project_id, created_by):
             result = {
                 'id': row[0],
                 'project_id': row[1],
-                'created_by': row[2],
+                'user_id': row[2],
                 'description': row[3] or 'Not specified',
                 'good_weld': row[4],
                 'bad_weld': row[5],
@@ -182,13 +183,13 @@ def get_users_from_database():
     try:
         conn = connect_to_database()
         cursor = conn.cursor()
-        cursor.execute("SELECT name FROM users ORDER BY name")  # Order by ID to maintain consistent order
+        cursor.execute("SELECT * FROM users ORDER BY user_id")  # Order by ID to maintain consistent order
         rows = cursor.fetchall()
         cursor.close()
         conn.close()
         
         # Return list of user names
-        users = [row[0] for row in rows]  # Each row[0] is the name column
+        users = [f"{row[0]} - {row[1]}" for row in rows]  # Each row[0] is the name column
         logger.info(f"Found users in database: {users}")
         return users
         
@@ -202,7 +203,7 @@ def get_reports_from_database():
     cursor = conn.cursor()
 
     cursor.execute("""
-    SELECT id, project_id, created_by, description, good_weld, bad_weld, uncertain,
+    SELECT weld_quality_id, project_id, user_id, description, good_weld, bad_weld, uncertain,
             to_char(created_at, 'YYYY-MM-DD HH24:MI:SS') as created_at
     FROM weld_quality 
     """)

@@ -245,7 +245,13 @@ def update_annotator(low_conf_filenames, selected_index, files, path_map, predic
     
     # Validate inputs
     if not all([low_conf_filenames, selected_index, files, path_map, predictions_state]):
-        logger.warning("Missing required inputs for update_annotator")
+        logger.warning(f"""Missing required inputs for update_annotator:
+            low_conf_filenames: {bool(low_conf_filenames)}
+            selected_index: {bool(selected_index)}
+            files: {bool(files)}
+            path_map: {bool(path_map)}
+            predictions_state: {bool(predictions_state)}
+        """)
         return None
         
     try:
@@ -323,15 +329,14 @@ def inference(files, predictions_state):
     path_map = {}
     
     if low_conf_annotations:
-        # Store file indices and names for low confidence predictions
-        for i, f in enumerate(files[:len(low_conf_annotations)]):
+        # Create a mapping of filenames to their full paths
+        for f in files:
             if hasattr(f, 'name'):
-                # Extract just the filename from the path
                 filename = f.name.split('/')[-1]
-                full_path = f.name
-                choices.append(filename)
-                path_map[filename] = full_path
-                logger.info(f"Added file to choices: {filename} -> {full_path}")
+                if filename in low_conf_annotations:
+                    path_map[filename] = f.name
+                    choices.append(filename)
+                    logger.info(f"Added low confidence file to choices: {filename} -> {f.name}")
         
         logger.info(f"Generated dropdown choices: {choices}")
         logger.info(f"Generated path map: {path_map}")
@@ -504,36 +509,15 @@ def display_current_annotations(low_conf_filenames, files, predictions_state):
 
 def export_predictions(form_date, description, created_by, status, predictions_state):
     """Export ALL predictions in COCO format"""
-    
-    if not files:
-        return None
-    
-    # Handle date conversion
-    if form_date:
-        if isinstance(form_date, (int, float)):
-            date_obj = datetime.fromtimestamp(form_date)
-            formatted_date = date_obj.strftime("%Y-%m-%d")
-        elif hasattr(form_date, 'strftime'):
-            formatted_date = form_date.strftime("%Y-%m-%d")
-        elif isinstance(form_date, str):
-            try:
-                date_obj = datetime.strptime(form_date, "%Y-%m-%d %H:%M:%S")
-                formatted_date = date_obj.strftime("%Y-%m-%d")
-            except ValueError:
-                formatted_date = form_date
-        else:
-            formatted_date = str(form_date)
-    else:
-        formatted_date = datetime.now().strftime("%Y-%m-%d")
-    
-    # Create export data in COCO format
+
+
     export_data = {
         "info": {
             "year": datetime.now().year,
             "version": "1.0",
             "description": description or "Gamuda Weld Detection Dataset",
             "contributor": created_by or "Gamuda IBS",
-            "date_created": formatted_date,
+            "date_created": datetime.now().strftime("%Y-%m-%d"),
             "url": "https://parexus.ai/"
         },
         "licenses": [
@@ -721,7 +705,8 @@ with gr.Blocks(css=css, title="Sentry") as demo:
     # Initialize session state
     predictions_state = gr.State(get_initial_predictions())
     
-    gr.Image("./assets/gamuda-logo-header-red.png", label="", show_label=False, container=False, height=100, width=300, show_download_button=False, show_fullscreen_button=False)
+    # change image file path
+    gr.Image("/Users/jeremyong/Desktop/Parexus/Gamuda/assets/gamuda-logo-header-red.png", label="", show_label=False, container=False, height=100, width=300, show_download_button=False, show_fullscreen_button=False)
     gr.Markdown("<h1 style='text-align: left;'>Gamuda Weld Quality Detection</h1>")
     
     with gr.Row():
@@ -868,7 +853,7 @@ with gr.Blocks(css=css, title="Sentry") as demo:
     )
 
     low_conf_index.change(
-        fn=update_annotator,
+        fn=lambda state, idx, files, path_map, preds: update_annotator(state, idx, files, path_map, preds) if all([state, idx, files, path_map, preds]) else None,
         inputs=[low_conf_state, low_conf_index, input_images, file_path_map, predictions_state],
         outputs=[annotator]
     )
